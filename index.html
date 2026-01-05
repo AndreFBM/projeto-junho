@@ -9,12 +9,23 @@
 <body>
   <header class="wrap">
     <h1>Projeto Junho</h1>
+
+    <nav class="nav">
+      <a class="navLink active" href="./index.html">Registo</a>
+      <a class="navLink" href="./workouts.html">Treinos</a>
+    </nav>
+
     <p class="muted">Registo simples (local) + progresso até <strong>04/06/2026</strong>.</p>
   </header>
 
   <main class="wrap grid">
     <section class="card">
-      <h2>Hoje</h2>
+      <div class="headRow">
+        <h2>Hoje</h2>
+        <div class="muted small">
+          Precisas do guião? <a class="inlineLink" href="./workouts.html">Ver Treinos</a>
+        </div>
+      </div>
 
       <form id="entryForm" class="form">
         <div class="row">
@@ -32,11 +43,32 @@
             <input id="steps" type="number" step="1" min="0" max="100000" placeholder="ex: 8500" />
           </label>
 
-          <label>Treino
-            <select id="workout">
+          <label>Treino (tipo)
+            <select id="workoutType">
               <option value="none">Nenhum</option>
-              <option value="A">Força A</option>
-              <option value="B">Força B</option>
+              <option value="strengthA">Força A</option>
+              <option value="strengthB">Força B</option>
+              <option value="walk">Caminhada</option>
+              <option value="run">Corrida</option>
+              <option value="bike">Bicicleta</option>
+              <option value="mobility">Mobilidade / Alongamentos</option>
+              <option value="other">Outro</option>
+            </select>
+          </label>
+        </div>
+
+        <div class="row">
+          <label>Duração (min)
+            <input id="workoutMin" type="number" step="1" min="0" max="600" placeholder="ex: 35" />
+          </label>
+
+          <label>Intensidade (RPE 1–10)
+            <select id="workoutRpe">
+              <option value="">—</option>
+              <option value="1">1</option><option value="2">2</option><option value="3">3</option>
+              <option value="4">4</option><option value="5">5</option><option value="6">6</option>
+              <option value="7">7</option><option value="8">8</option><option value="9">9</option>
+              <option value="10">10</option>
             </select>
           </label>
         </div>
@@ -77,7 +109,7 @@
         </div>
 
         <div class="row">
-          <label>Inicio (kg)
+          <label>Início (kg)
             <input id="startWeight" type="number" step="0.1" min="40" max="250" />
           </label>
 
@@ -138,6 +170,8 @@
               <th>Peso</th>
               <th>Passos</th>
               <th>Treino</th>
+              <th>Min</th>
+              <th>RPE</th>
               <th>Extras</th>
               <th>Sono</th>
               <th>Notas</th>
