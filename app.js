@@ -1,5 +1,5 @@
 const LS_KEYS = {
-  entries: "projetoJunho.entries.v1",
+  entries: "projetoJunho.entries.v2",
   settings: "projetoJunho.settings.v1",
 };
 
@@ -43,28 +43,71 @@ function saveSettings(settings) {
   localStorage.setItem(LS_KEYS.settings, JSON.stringify(settings));
 }
 
+/**
+ * MIGRAÇÃO AUTOMÁTICA:
+ * - v1 guardava workout: "A"/"B"/"none"
+ * - v2 usa workoutType: "strengthA"/"strengthB"/"none" + (min/rpe)
+ * Também tenta importar dados do storage antigo se existirem.
+ */
 function loadEntries() {
-  const raw = localStorage.getItem(LS_KEYS.entries);
-  if (!raw) return [];
-  try {
-    const arr = JSON.parse(raw);
-    if (!Array.isArray(arr)) return [];
-    // normalize + sort
-    return arr
-      .map((e) => ({
+  // Primeiro tenta o formato v2
+  const rawV2 = localStorage.getItem(LS_KEYS.entries);
+  if (rawV2) {
+    try {
+      const arr = JSON.parse(rawV2);
+      return normalizeEntries(arr);
+    } catch {
+      // cai abaixo
+    }
+  }
+
+  // Tenta procurar um storage antigo (v1) se existir
+  const legacyKey = "projetoJunho.entries.v1";
+  const rawLegacy = localStorage.getItem(legacyKey);
+  if (rawLegacy) {
+    try {
+      const arr = JSON.parse(rawLegacy);
+      const normalized = normalizeEntries(arr);
+      // guarda já em v2 para não perder
+      saveEntries(normalized);
+      return normalized;
+    } catch {
+      return [];
+    }
+  }
+
+  return [];
+}
+
+function normalizeEntries(arr) {
+  if (!Array.isArray(arr)) return [];
+  return arr
+    .map((e) => {
+      // migração de workout antigo
+      let workoutType = e.workoutType;
+      if (!workoutType && e.workout) {
+        if (e.workout === "A") workoutType = "strengthA";
+        else if (e.workout === "B") workoutType = "strengthB";
+        else workoutType = "none";
+      }
+
+      return {
         date: e.date,
         weight: parseNum(e.weight),
         steps: parseNum(e.steps),
-        workout: e.workout || "none",
+
+        workoutType: workoutType || "none",
+        workoutMin: parseNum(e.workoutMin),
+        workoutRpe: parseNum(e.workoutRpe),
+
         extras: parseNum(e.extras),
         sleep: parseNum(e.sleep),
+
         notes: String(e.notes || ""),
-      }))
-      .filter((e) => typeof e.date === "string" && e.date.length >= 10)
-      .sort((a, b) => a.date.localeCompare(b.date));
-  } catch {
-    return [];
-  }
+      };
+    })
+    .filter((e) => typeof e.date === "string" && e.date.length >= 10)
+    .sort((a, b) => a.date.localeCompare(b.date));
 }
 
 function saveEntries(entries) {
@@ -84,10 +127,8 @@ function deleteEntry(entries, date) {
 }
 
 function lastNDaysEntries(entries, n) {
-  // assumes entries sorted by date
   const byDate = entries.slice().sort((a, b) => a.date.localeCompare(b.date));
-  const tail = byDate.slice(-Math.max(n, 0));
-  return tail;
+  return byDate.slice(-Math.max(n, 0));
 }
 
 function avg(values) {
@@ -108,6 +149,20 @@ function fmt(n, digits = 1) {
   return n.toFixed(digits);
 }
 
+function formatWorkoutType(v) {
+  const map = {
+    none: "",
+    strengthA: "Força A",
+    strengthB: "Força B",
+    walk: "Caminhada",
+    run: "Corrida",
+    bike: "Bicicleta",
+    mobility: "Mobilidade",
+    other: "Outro",
+  };
+  return map[v] ?? String(v ?? "");
+}
+
 function computeMetrics(entries, settings) {
   const last7 = lastNDaysEntries(entries, 7);
   const avg7w = avg(last7.map((e) => e.weight).filter((x) => x !== null));
@@ -116,19 +171,17 @@ function computeMetrics(entries, settings) {
   const today = todayISO();
   const daysLeft = dateDiffDays(today, settings.goalDate);
 
-  // current weight proxy: avg7w, else last known weight, else startWeight
+  // current weight proxy
   let currentWeight = avg7w;
   if (currentWeight === null) {
     const lastWithWeight = [...entries].reverse().find((e) => e.weight !== null);
     currentWeight = lastWithWeight?.weight ?? settings.startWeight;
   }
 
-  // pace: kg/week needed to reach goal
   const weeksLeft = daysLeft > 0 ? daysLeft / 7 : 0;
   const kgToGo = currentWeight - settings.goalWeight;
   const neededPerWeek = weeksLeft > 0 ? (kgToGo / weeksLeft) : null;
 
-  // recent trend (approx): last 14 days avg - previous 14 days avg
   const last28 = lastNDaysEntries(entries, 28);
   const first14 = last28.slice(0, Math.max(0, last28.length - 14));
   const last14 = last28.slice(-14);
@@ -136,7 +189,7 @@ function computeMetrics(entries, settings) {
   const avgFirst14 = avg(first14.map((e) => e.weight).filter((x) => x !== null));
   const avgLast14 = avg(last14.map((e) => e.weight).filter((x) => x !== null));
   const change14 = (avgLast14 !== null && avgFirst14 !== null) ? (avgLast14 - avgFirst14) : null; // negative is good
-  const perWeek14 = change14 !== null ? (change14 / 2) : null; // 2 weeks
+  const perWeek14 = change14 !== null ? (change14 / 2) : null;
 
   return { avg7w, avg7s, daysLeft, currentWeight, neededPerWeek, perWeek14 };
 }
@@ -152,12 +205,11 @@ function setStatus(metrics, settings) {
   }
 
   const needed = metrics.neededPerWeek;
-  const recent = metrics.perWeek14; // negative means losing
+  const recent = metrics.perWeek14;
 
   const neededTxt = needed === null ? "—" : `${fmt(needed, 2)} kg/sem (aprox.)`;
   const recentTxt = recent === null ? "—" : `${fmt(recent, 2)} kg/sem (últ. 14 dias)`;
 
-  // Interpret
   let cls = "warn";
   let headline = "Ajuste leve recomendado";
   let detail = "";
@@ -176,7 +228,6 @@ function setStatus(metrics, settings) {
   }
 
   if (recent !== null && needed !== null) {
-    // needed is positive kg/week to lose; recent is negative for losing
     const recentLoss = -recent;
     if (recentLoss >= needed * 0.9) {
       detail = "Estás perto (ou acima) do ritmo necessário. Mantém consistência.";
@@ -214,7 +265,7 @@ function renderTable(entries) {
   const tbody = el("tbody");
   tbody.innerHTML = "";
 
-  const rows = [...entries].reverse(); // newest first
+  const rows = [...entries].reverse();
   for (const e of rows) {
     const tr = document.createElement("tr");
 
@@ -227,7 +278,9 @@ function renderTable(entries) {
     tr.appendChild(td(e.date));
     tr.appendChild(td(e.weight === null ? "" : fmt(e.weight, 1)));
     tr.appendChild(td(e.steps === null ? "" : String(e.steps)));
-    tr.appendChild(td(e.workout === "none" ? "" : e.workout));
+    tr.appendChild(td(formatWorkoutType(e.workoutType)));
+    tr.appendChild(td(e.workoutMin === null ? "" : String(e.workoutMin)));
+    tr.appendChild(td(e.workoutRpe === null ? "" : String(e.workoutRpe)));
     tr.appendChild(td(e.extras === null ? "" : String(e.extras)));
     tr.appendChild(td(e.sleep === null ? "" : fmt(e.sleep, 1)));
     tr.appendChild(td(e.notes || ""));
@@ -267,7 +320,6 @@ function renderChart(entries) {
   const labels = data.map((e) => e.date);
   const weights = data.map((e) => e.weight);
 
-  // 7-day moving average (simple)
   const wMA = weights.map((_, i) => {
     const start = Math.max(0, i - 6);
     const slice = weights.slice(start, i + 1);
@@ -293,10 +345,7 @@ function renderChart(entries) {
         y: { title: { display: true, text: "kg" } },
         x: { title: { display: true, text: "data" } },
       },
-      plugins: {
-        legend: { display: true },
-        tooltip: { enabled: true },
-      },
+      plugins: { legend: { display: true } },
     },
   });
 }
@@ -306,13 +355,14 @@ function exportJSON(entries, settings) {
     exportedAt: new Date().toISOString(),
     settings,
     entries,
+    version: "v2",
   };
   const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
   downloadBlob(blob, `projeto-junho-backup-${todayISO()}.json`);
 }
 
 function exportCSV(entries) {
-  const header = ["date","weight","steps","workout","extras","sleep","notes"];
+  const header = ["date","weight","steps","workoutType","workoutMin","workoutRpe","extras","sleep","notes"];
   const lines = [header.join(",")];
 
   for (const e of entries) {
@@ -320,13 +370,14 @@ function exportCSV(entries) {
       e.date,
       e.weight ?? "",
       e.steps ?? "",
-      e.workout ?? "none",
+      e.workoutType ?? "none",
+      e.workoutMin ?? "",
+      e.workoutRpe ?? "",
       e.extras ?? "",
       e.sleep ?? "",
       (e.notes ?? "").replaceAll('"','""'),
     ];
-    // quote notes
-    row[6] = `"${row[6]}"`;
+    row[8] = `"${row[8]}"`;
     lines.push(row.join(","));
   }
 
@@ -349,7 +400,9 @@ function fillForm(e) {
   el("date").value = e.date;
   el("weight").value = e.weight ?? "";
   el("steps").value = e.steps ?? "";
-  el("workout").value = e.workout ?? "none";
+  el("workoutType").value = e.workoutType ?? "none";
+  el("workoutMin").value = e.workoutMin ?? "";
+  el("workoutRpe").value = e.workoutRpe ?? "";
   el("extras").value = e.extras ?? "";
   el("sleep").value = e.sleep ?? "";
   el("notes").value = e.notes ?? "";
@@ -360,7 +413,9 @@ function clearForm() {
   el("date").value = todayISO();
   el("weight").value = "";
   el("steps").value = "";
-  el("workout").value = "none";
+  el("workoutType").value = "none";
+  el("workoutMin").value = "";
+  el("workoutRpe").value = "";
   el("extras").value = "";
   el("sleep").value = "";
   el("notes").value = "";
@@ -396,11 +451,9 @@ function refresh() {
 }
 
 function init() {
-  // defaults
   el("date").value = todayISO();
   applySettingsToUI();
 
-  // form submit
   el("entryForm").addEventListener("submit", (ev) => {
     ev.preventDefault();
 
@@ -408,9 +461,14 @@ function init() {
       date: el("date").value,
       weight: parseNum(el("weight").value),
       steps: parseNum(el("steps").value),
-      workout: el("workout").value,
+
+      workoutType: el("workoutType").value,
+      workoutMin: parseNum(el("workoutMin").value),
+      workoutRpe: parseNum(el("workoutRpe").value),
+
       extras: parseNum(el("extras").value),
       sleep: parseNum(el("sleep").value),
+
       notes: el("notes").value.trim(),
     };
 
@@ -422,7 +480,6 @@ function init() {
 
   el("resetBtn").onclick = clearForm;
 
-  // settings
   el("saveSettingsBtn").onclick = () => {
     state.settings = readSettingsFromUI();
     saveSettings(state.settings);
@@ -438,7 +495,6 @@ function init() {
     alert("Settings repostas.");
   };
 
-  // export/import
   el("exportJsonBtn").onclick = () => exportJSON(state.entries, state.settings);
   el("exportCsvBtn").onclick = () => exportCSV(state.entries);
 
@@ -453,18 +509,7 @@ function init() {
       const importedEntries = Array.isArray(payload.entries) ? payload.entries : [];
       const importedSettings = payload.settings && typeof payload.settings === "object" ? payload.settings : null;
 
-      state.entries = importedEntries
-        .map((e) => ({
-          date: e.date,
-          weight: parseNum(e.weight),
-          steps: parseNum(e.steps),
-          workout: e.workout || "none",
-          extras: parseNum(e.extras),
-          sleep: parseNum(e.sleep),
-          notes: String(e.notes || ""),
-        }))
-        .filter((e) => typeof e.date === "string" && e.date.length >= 10)
-        .sort((a, b) => a.date.localeCompare(b.date));
+      state.entries = normalizeEntries(importedEntries);
 
       if (importedSettings) {
         state.settings = { ...DEFAULT_SETTINGS, ...importedSettings };
@@ -486,8 +531,13 @@ function init() {
   el("wipeBtn").onclick = () => {
     const ok = confirm("Isto apaga TODOS os registos locais e settings. Tens a certeza?");
     if (!ok) return;
+
     localStorage.removeItem(LS_KEYS.entries);
     localStorage.removeItem(LS_KEYS.settings);
+
+    // também remove a key antiga se existir
+    localStorage.removeItem("projetoJunho.entries.v1");
+
     state.entries = [];
     state.settings = { ...DEFAULT_SETTINGS, startDate: todayISO() };
     applySettingsToUI();
