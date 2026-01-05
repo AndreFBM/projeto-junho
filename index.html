@@ -1,0 +1,161 @@
+<!doctype html>
+<html lang="pt">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Projeto Junho — Registo</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <header class="wrap">
+    <h1>Projeto Junho</h1>
+    <p class="muted">Registo simples (local) + progresso até <strong>04/06/2026</strong>.</p>
+  </header>
+
+  <main class="wrap grid">
+    <section class="card">
+      <h2>Hoje</h2>
+
+      <form id="entryForm" class="form">
+        <div class="row">
+          <label>Data
+            <input id="date" type="date" required />
+          </label>
+
+          <label>Peso (kg)
+            <input id="weight" type="number" step="0.1" min="40" max="250" placeholder="ex: 105.0" />
+          </label>
+        </div>
+
+        <div class="row">
+          <label>Passos
+            <input id="steps" type="number" step="1" min="0" max="100000" placeholder="ex: 8500" />
+          </label>
+
+          <label>Treino
+            <select id="workout">
+              <option value="none">Nenhum</option>
+              <option value="A">Força A</option>
+              <option value="B">Força B</option>
+            </select>
+          </label>
+        </div>
+
+        <div class="row">
+          <label>Extras (kcal)
+            <input id="extras" type="number" step="1" min="0" max="5000" placeholder="ex: 450" />
+          </label>
+
+          <label>Sono (h)
+            <input id="sleep" type="number" step="0.1" min="0" max="24" placeholder="ex: 7.5" />
+          </label>
+        </div>
+
+        <label>Notas
+          <textarea id="notes" rows="3" placeholder="Fome, stress, refeições, etc."></textarea>
+        </label>
+
+        <div class="actions">
+          <button type="submit" class="primary">Guardar registo</button>
+          <button type="button" id="resetBtn">Limpar</button>
+        </div>
+      </form>
+    </section>
+
+    <section class="card">
+      <h2>Objetivo & ritmo</h2>
+
+      <div class="form">
+        <div class="row">
+          <label>Meta (kg)
+            <input id="goalWeight" type="number" step="0.1" min="40" max="250" />
+          </label>
+
+          <label>Data alvo
+            <input id="goalDate" type="date" />
+          </label>
+        </div>
+
+        <div class="row">
+          <label>Inicio (kg)
+            <input id="startWeight" type="number" step="0.1" min="40" max="250" />
+          </label>
+
+          <label>Data início
+            <input id="startDate" type="date" />
+          </label>
+        </div>
+
+        <div class="actions">
+          <button type="button" id="saveSettingsBtn" class="primary">Guardar settings</button>
+          <button type="button" id="resetSettingsBtn">Repor defaults</button>
+        </div>
+      </div>
+
+      <div id="status" class="status"></div>
+
+      <div class="mini">
+        <div class="miniCard">
+          <div class="k">Média 7 dias (peso)</div>
+          <div class="v" id="avg7w">—</div>
+        </div>
+        <div class="miniCard">
+          <div class="k">Média 7 dias (passos)</div>
+          <div class="v" id="avg7s">—</div>
+        </div>
+        <div class="miniCard">
+          <div class="k">Dias até alvo</div>
+          <div class="v" id="daysLeft">—</div>
+        </div>
+      </div>
+    </section>
+
+    <section class="card full">
+      <h2>Gráfico (peso)</h2>
+      <div class="chartWrap">
+        <canvas id="weightChart"></canvas>
+      </div>
+      <p class="muted small">Sugestão: pesa-te de manhã, após WC, antes de comer/beber (consistência &gt; valor isolado).</p>
+    </section>
+
+    <section class="card full">
+      <div class="headRow">
+        <h2>Histórico</h2>
+        <div class="actions right">
+          <button type="button" id="exportJsonBtn">Export JSON</button>
+          <button type="button" id="importJsonBtn">Import JSON</button>
+          <input type="file" id="importFile" accept="application/json" hidden />
+          <button type="button" id="exportCsvBtn">Export CSV</button>
+          <button type="button" id="wipeBtn" class="danger">Apagar tudo</button>
+        </div>
+      </div>
+
+      <div class="tableWrap">
+        <table id="table">
+          <thead>
+            <tr>
+              <th>Data</th>
+              <th>Peso</th>
+              <th>Passos</th>
+              <th>Treino</th>
+              <th>Extras</th>
+              <th>Sono</th>
+              <th>Notas</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody id="tbody"></tbody>
+        </table>
+      </div>
+
+      <p class="muted small">
+        Tudo é guardado localmente (no teu browser). Para segurança, exporta JSON de vez em quando.
+      </p>
+    </section>
+  </main>
+
+  <!-- Chart.js via CDN -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
