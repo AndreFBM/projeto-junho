@@ -2,29 +2,21 @@
 // 1) CONFIG
 // ==========================
 
-// Local storage keys
 const LS_KEYS = {
-  entries: "projetoJunho.entries.v3",   // <- v3 porque agora guardamos updatedAt (para sync)
+  entries: "projetoJunho.entries.v3",
   settings: "projetoJunho.settings.v1",
 };
 
-// Legacy keys (para migração)
 const LEGACY_ENTRIES_KEYS = [
   "projetoJunho.entries.v2",
   "projetoJunho.entries.v1",
 ];
 
-// Supabase (preenche aqui)
 const SUPABASE_URL = "https://iiyusrqrghqpcucipryc.supabase.co";
 const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImlpeXVzcnFyZ2hxcGN1Y2lwcnljIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Njc3NDA1OTcsImV4cCI6MjA4MzMxNjU5N30.bJgg3kle6ICOeI1zH2R2Akyurnq0tUfoImdmzyr7jzI";
-
-// O teu URL do GitHub Pages (redirect do magic link)
 const SITE_URL = "https://andrefbm.github.io/projeto-junho/";
-
-// Tabela no Supabase
 const SUPABASE_TABLE = "entries";
 
-// Defaults
 const DEFAULT_SETTINGS = {
   goalWeight: 85.0,
   goalDate: "2026-06-04",
@@ -32,21 +24,19 @@ const DEFAULT_SETTINGS = {
   startDate: todayISO(),
 };
 
-// Charts
 let chart = null;
 let stepsChart = null;
 
-// DOM helper
 const el = (id) => document.getElementById(id);
 
-// Supabase client (se a lib não tiver carregado, fica null)
-const supabase = (window.supabase && window.supabase.createClient)
+// IMPORTANT: não usar o nome "supabase" aqui para evitar conflito com globals
+const sb = (window.supabase && window.supabase.createClient)
   ? window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY)
   : null;
 
 
 // ==========================
-// 2) HELPERS (datas, números, etc.)
+// 2) HELPERS
 // ==========================
 
 function todayISO() {
@@ -55,6 +45,10 @@ function todayISO() {
   const mm = String(d.getMonth() + 1).padStart(2, "0");
   const dd = String(d.getDate()).padStart(2, "0");
   return `${yyyy}-${mm}-${dd}`;
+}
+
+function nowISO() {
+  return new Date().toISOString();
 }
 
 function parseNum(v) {
@@ -81,6 +75,11 @@ function fmt(n, digits = 1) {
   return n.toFixed(digits);
 }
 
+function toMillis(iso) {
+  const t = Date.parse(iso || "");
+  return Number.isFinite(t) ? t : 0;
+}
+
 function formatWorkoutType(v) {
   const map = {
     none: "",
@@ -95,18 +94,9 @@ function formatWorkoutType(v) {
   return map[v] ?? String(v ?? "");
 }
 
-function nowISO() {
-  return new Date().toISOString();
-}
-
-function toMillis(iso) {
-  const t = Date.parse(iso || "");
-  return Number.isFinite(t) ? t : 0;
-}
-
 
 // ==========================
-// 3) LOCAL STORAGE: SETTINGS
+// 3) SETTINGS
 // ==========================
 
 function loadSettings() {
@@ -126,21 +116,14 @@ function saveSettings(settings) {
 
 
 // ==========================
-// 4) LOCAL STORAGE: ENTRIES (com migração)
+// 4) ENTRIES + MIGRAÇÃO
 // ==========================
 
-/**
- * NORMALIZAÇÃO
- * - garante tipos corretos
- * - migra workout antigo (A/B) para workoutType
- * - adiciona updatedAt (necessário para sync)
- */
 function normalizeEntries(arr) {
   if (!Array.isArray(arr)) return [];
 
   return arr
     .map((e) => {
-      // migração de workout antigo
       let workoutType = e.workoutType;
       if (!workoutType && e.workout) {
         if (e.workout === "A") workoutType = "strengthA";
@@ -148,7 +131,6 @@ function normalizeEntries(arr) {
         else workoutType = "none";
       }
 
-      // updatedAt pode vir de export antigo, ou de cloud (updated_at), ou não existir
       const updatedAt =
         (typeof e.updatedAt === "string" && e.updatedAt) ? e.updatedAt :
         (typeof e.updated_at === "string" && e.updated_at) ? e.updated_at :
@@ -168,8 +150,7 @@ function normalizeEntries(arr) {
 
         notes: String(e.notes || ""),
 
-        // novo
-        updatedAt: updatedAt, // pode ser null (vai ser preenchido quando editares/guardares)
+        updatedAt,
       };
     })
     .filter((e) => typeof e.date === "string" && e.date.length >= 10)
@@ -181,28 +162,21 @@ function saveEntries(entries) {
 }
 
 function loadEntries() {
-  // primeiro tenta o formato atual
   const raw = localStorage.getItem(LS_KEYS.entries);
   if (raw) {
     try {
       return normalizeEntries(JSON.parse(raw));
-    } catch {
-      // cai abaixo
-    }
+    } catch {}
   }
 
-  // tenta migrar de versões anteriores
   for (const key of LEGACY_ENTRIES_KEYS) {
     const legacy = localStorage.getItem(key);
     if (!legacy) continue;
-
     try {
       const normalized = normalizeEntries(JSON.parse(legacy));
-      saveEntries(normalized); // grava em v3
+      saveEntries(normalized);
       return normalized;
-    } catch {
-      // continua
-    }
+    } catch {}
   }
 
   return [];
@@ -227,7 +201,7 @@ function lastNDaysEntries(entries, n) {
 
 
 // ==========================
-// 5) METRICS + UI (status, tabela, charts)
+// 5) UI
 // ==========================
 
 function computeMetrics(entries, settings) {
@@ -238,7 +212,6 @@ function computeMetrics(entries, settings) {
   const today = todayISO();
   const daysLeft = dateDiffDays(today, settings.goalDate);
 
-  // current weight proxy
   let currentWeight = avg7w;
   if (currentWeight === null) {
     const lastWithWeight = [...entries].reverse().find((e) => e.weight !== null);
@@ -255,7 +228,7 @@ function computeMetrics(entries, settings) {
 
   const avgFirst14 = avg(first14.map((e) => e.weight).filter((x) => x !== null));
   const avgLast14 = avg(last14.map((e) => e.weight).filter((x) => x !== null));
-  const change14 = (avgLast14 !== null && avgFirst14 !== null) ? (avgLast14 - avgFirst14) : null; // negative is good
+  const change14 = (avgLast14 !== null && avgFirst14 !== null) ? (avgLast14 - avgFirst14) : null;
   const perWeek14 = change14 !== null ? (change14 / 2) : null;
 
   return { avg7w, avg7s, daysLeft, currentWeight, neededPerWeek, perWeek14 };
@@ -281,18 +254,9 @@ function setStatus(metrics, settings) {
   let headline = "Ajuste leve recomendado";
   let detail = "";
 
-  if (needed !== null && needed <= 1.0) {
-    headline = "Ritmo sustentável (bom)";
-    cls = "ok";
-  }
-  if (needed !== null && needed > 1.0) {
-    headline = "Meta agressiva";
-    cls = "warn";
-  }
-  if (needed !== null && needed > 1.3) {
-    headline = "Muito agressivo";
-    cls = "bad";
-  }
+  if (needed !== null && needed <= 1.0) { headline = "Ritmo sustentável (bom)"; cls = "ok"; }
+  if (needed !== null && needed > 1.0)  { headline = "Meta agressiva"; cls = "warn"; }
+  if (needed !== null && needed > 1.3)  { headline = "Muito agressivo"; cls = "bad"; }
 
   if (recent !== null && needed !== null) {
     const recentLoss = -recent;
@@ -371,12 +335,8 @@ function renderTable(entries) {
       saveEntries(state.entries);
       refresh();
 
-      // apaga na cloud se estiver logado
-      try {
-        await deleteEntryFromCloud(e.date);
-      } catch (err) {
-        console.warn("Cloud delete falhou:", err);
-      }
+      try { await deleteEntryFromCloud(e.date); }
+      catch (err) { console.warn("Cloud delete falhou:", err); }
     };
 
     actions.appendChild(editBtn);
@@ -558,7 +518,7 @@ const state = {
 
 
 // ==========================
-// 9) AUTH + SYNC (SUPABASE)
+// 9) AUTH + SYNC
 // ==========================
 
 function setAuthStatus(msg) {
@@ -567,40 +527,40 @@ function setAuthStatus(msg) {
 }
 
 function supabaseEnabled() {
-  // Também valida se o user preencheu a key
-  return !!supabase && SUPABASE_ANON_KEY && !SUPABASE_ANON_KEY.includes("COLOCA_AQUI");
+  return !!sb && !!SUPABASE_ANON_KEY;
 }
 
 async function getUser() {
   if (!supabaseEnabled()) return null;
-  const { data, error } = await supabase.auth.getUser();
+  const { data, error } = await sb.auth.getUser();
   if (error) return null;
   return data?.user ?? null;
 }
 
 async function signInMagicLink(email) {
   if (!supabaseEnabled()) throw new Error("Supabase não configurado.");
-  const { error } = await supabase.auth.signInWithOtp({
+  console.log("[auth] signInWithOtp ->", email);
+
+  const { data, error } = await sb.auth.signInWithOtp({
     email,
     options: { emailRedirectTo: SITE_URL },
   });
-  if (error) throw error;
-}
 
-function entryTimestamp(entry) {
-  return toMillis(entry?.updatedAt);
+  if (error) {
+    console.error("[auth] erro:", error);
+    throw error;
+  }
+
+  console.log("[auth] ok:", data);
 }
 
 function mergeLocalAndRemote(localEntries, remoteRows) {
-  // remoteRows: [{date, payload, updated_at}]
   const map = new Map();
 
-  // Local
   for (const e of localEntries) {
-    map.set(e.date, { t: entryTimestamp(e), entry: e });
+    map.set(e.date, { t: toMillis(e.updatedAt), entry: e });
   }
 
-  // Remote
   for (const r of remoteRows) {
     const remoteEntry = normalizeEntries([{
       ...(r.payload || {}),
@@ -616,16 +576,14 @@ function mergeLocalAndRemote(localEntries, remoteRows) {
     }
   }
 
-  return [...map.values()]
-    .map((x) => x.entry)
-    .sort((a, b) => a.date.localeCompare(b.date));
+  return [...map.values()].map(x => x.entry).sort((a,b) => a.date.localeCompare(b.date));
 }
 
 async function syncDown() {
   const user = await getUser();
   if (!user) return;
 
-  const { data, error } = await supabase
+  const { data, error } = await sb
     .from(SUPABASE_TABLE)
     .select("date,payload,updated_at")
     .eq("user_id", user.id)
@@ -642,17 +600,15 @@ async function upsertEntryToCloud(entry) {
   const user = await getUser();
   if (!user) return;
 
-  // Garante updatedAt
   const updatedAt = entry.updatedAt || nowISO();
-
   const row = {
     user_id: user.id,
     date: entry.date,
-    payload: { ...entry, updatedAt },  // payload inclui updatedAt (para merge)
+    payload: { ...entry, updatedAt },
     updated_at: updatedAt,
   };
 
-  const { error } = await supabase
+  const { error } = await sb
     .from(SUPABASE_TABLE)
     .upsert(row, { onConflict: "user_id,date" });
 
@@ -663,7 +619,7 @@ async function deleteEntryFromCloud(date) {
   const user = await getUser();
   if (!user) return;
 
-  const { error } = await supabase
+  const { error } = await sb
     .from(SUPABASE_TABLE)
     .delete()
     .eq("user_id", user.id)
@@ -676,7 +632,6 @@ async function syncUpAll() {
   const user = await getUser();
   if (!user) return;
 
-  // Simples e robusto para app pequena: envia tudo
   for (const e of state.entries) {
     await upsertEntryToCloud(e);
   }
@@ -694,24 +649,25 @@ function initAuthUI() {
   const syncBtn = el("syncBtn");
   const logoutBtn = el("logoutBtn");
 
-  // Se não houver supabase (ou key não preenchida), desativa UI
   if (!supabaseEnabled()) {
-    setAuthStatus("Supabase não configurado (falta a anon key no app.js).");
-    if (loginBtn) loginBtn.disabled = true;
-    if (syncBtn) syncBtn.disabled = true;
-    if (logoutBtn) logoutBtn.disabled = true;
+    setAuthStatus("Supabase não configurado.");
+    loginBtn && (loginBtn.disabled = true);
+    syncBtn && (syncBtn.disabled = true);
+    logoutBtn && (logoutBtn.disabled = true);
     return;
   }
 
   loginBtn?.addEventListener("click", async () => {
     const email = (emailInput?.value || "").trim();
     if (!email) return alert("Escreve o email.");
+
     try {
       await signInMagicLink(email);
       setAuthStatus("Magic link enviado. Abre o email e clica no link.");
     } catch (err) {
       console.error(err);
-      alert("Falhou o envio do magic link. Vê a consola.");
+      setAuthStatus(`Falhou: ${err?.message || "erro"}`);
+      alert(`Falhou o envio do magic link: ${err?.message || "erro"}`);
     }
   });
 
@@ -723,19 +679,18 @@ function initAuthUI() {
       setAuthStatus(user ? `Autenticado: ${user.email} (sync ok)` : "Não autenticado.");
     } catch (err) {
       console.error(err);
-      alert("Sync falhou. Vê a consola.");
       const user = await getUser();
       setAuthStatus(user ? `Autenticado: ${user.email} (sync falhou)` : "Não autenticado.");
+      alert(`Sync falhou: ${err?.message || "erro"}`);
     }
   });
 
   logoutBtn?.addEventListener("click", async () => {
-    await supabase.auth.signOut();
+    await sb.auth.signOut();
     setAuthStatus("Não autenticado.");
   });
 
-  // Listener de auth state
-  supabase.auth.onAuthStateChange(async (_event, session) => {
+  sb.auth.onAuthStateChange(async (_event, session) => {
     if (session?.user) {
       setAuthStatus(`Autenticado: ${session.user.email} (a sincronizar...)`);
       try {
@@ -750,11 +705,9 @@ function initAuthUI() {
     }
   });
 
-  // Estado inicial
   getUser().then((u) => {
     if (u) {
       setAuthStatus(`Autenticado: ${u.email}`);
-      // tenta sync inicial sem “chatear”
       doFullSync().catch((e) => console.warn("Sync inicial falhou:", e));
     } else {
       setAuthStatus("Não autenticado.");
@@ -764,7 +717,7 @@ function initAuthUI() {
 
 
 // ==========================
-// 10) SETTINGS UI + REFRESH
+// 10) SETTINGS + REFRESH
 // ==========================
 
 function applySettingsToUI() {
@@ -798,14 +751,11 @@ function refresh() {
 // ==========================
 
 function init() {
-  // defaults
   el("date").value = todayISO();
   applySettingsToUI();
 
-  // Auth UI
   initAuthUI();
 
-  // submit (agora async para fazer upsert cloud)
   el("entryForm").addEventListener("submit", async (ev) => {
     ev.preventDefault();
 
@@ -823,23 +773,16 @@ function init() {
 
       notes: el("notes").value.trim(),
 
-      // importante para sync
       updatedAt: nowISO(),
     };
 
     state.entries = upsertEntry(state.entries, entry);
     saveEntries(state.entries);
-
     clearForm();
     refresh();
 
-    // cloud upsert (se estiver logado)
-    try {
-      await upsertEntryToCloud(entry);
-    } catch (err) {
-      // não bloqueia a experiência local
-      console.warn("Cloud upsert falhou:", err);
-    }
+    try { await upsertEntryToCloud(entry); }
+    catch (err) { console.warn("Cloud upsert falhou:", err); }
   });
 
   el("resetBtn").onclick = clearForm;
@@ -886,7 +829,6 @@ function init() {
       refresh();
       alert("Import feito com sucesso.");
 
-      // opcional: após import, tenta sync para cloud
       try { await doFullSync(); } catch (e) { console.warn("Sync pós-import falhou:", e); }
     } catch (err) {
       console.error(err);
@@ -902,13 +844,10 @@ function init() {
 
     localStorage.removeItem(LS_KEYS.entries);
     localStorage.removeItem(LS_KEYS.settings);
-
-    // também remove legacy keys
     for (const k of LEGACY_ENTRIES_KEYS) localStorage.removeItem(k);
 
     state.entries = [];
     state.settings = { ...DEFAULT_SETTINGS, startDate: todayISO() };
-
     applySettingsToUI();
     refresh();
   };
