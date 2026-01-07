@@ -11,6 +11,7 @@ const DEFAULT_SETTINGS = {
 };
 
 let chart = null;
+let stepsChart = null;
 
 const el = (id) => document.getElementById(id);
 
@@ -350,6 +351,44 @@ function renderChart(entries) {
   });
 }
 
+function renderStepsChart(entries) {
+  const ctx = el("stepsChart");
+  const data = entries.filter((e) => e.steps !== null);
+
+  const labels = data.map((e) => e.date);
+  const steps = data.map((e) => e.steps);
+
+  // média móvel 7 dias (opcional, ajuda muito)
+  const sMA = steps.map((_, i) => {
+    const start = Math.max(0, i - 6);
+    const slice = steps.slice(start, i + 1);
+    const a = avg(slice);
+    return a === null ? null : Math.round(a);
+  });
+
+  if (stepsChart) stepsChart.destroy();
+  stepsChart = new Chart(ctx, {
+    type: "line",
+    data: {
+      labels,
+      datasets: [
+        { label: "Passos", data: steps, tension: 0.25 },
+        { label: "Média móvel 7 dias", data: sMA, tension: 0.25 },
+      ],
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      interaction: { mode: "index", intersect: false },
+      scales: {
+        y: { title: { display: true, text: "passos" } },
+        x: { title: { display: true, text: "data" } },
+      },
+      plugins: { legend: { display: true } },
+    },
+  });
+}
+
 function exportJSON(entries, settings) {
   const payload = {
     exportedAt: new Date().toISOString(),
@@ -448,6 +487,7 @@ function refresh() {
   setStatus(metrics, state.settings);
   renderTable(state.entries);
   renderChart(state.entries);
+  renderStepsChart(state.entries);
 }
 
 function init() {
