@@ -76,6 +76,24 @@ button:hover{ background:var(--btn2); }
 .primary{ background:#2a2f52; border-color:#3a3f5c; }
 .danger{ background:#3a1420; border-color:#5a1b2c; }
 
+/* Melhor UX: botões desativados (para quando supabase não estiver configurado) */
+button:disabled{
+  opacity:0.55;
+  cursor:not-allowed;
+}
+button:disabled:hover{
+  background:var(--btn);
+}
+
+/* Auth status (opcional, mas fica mais claro visualmente) */
+#authStatus{
+  display:inline-block;
+  padding:6px 10px;
+  border:1px solid rgba(34,36,51,.6);
+  border-radius:999px;
+  background:rgba(26,28,38,.35);
+}
+
 .status{
   margin-top:12px;
   padding:12px;
