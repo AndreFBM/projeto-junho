@@ -16,6 +16,32 @@
     </nav>
 
     <p class="muted">Registo simples (local) + progresso até <strong>04/06/2026</strong>.</p>
+
+    <!-- Auth (Supabase) -->
+    <section class="card" style="margin-top:12px;">
+      <div class="headRow">
+        <h2 style="margin:0;">Sincronização</h2>
+        <div class="muted small">Login por email (magic link)</div>
+      </div>
+
+      <div class="form" style="margin-top:10px;">
+        <div class="row">
+          <label>Email
+            <input id="authEmail" type="email" placeholder="o teu email" autocomplete="email" />
+          </label>
+
+          <div style="display:flex; gap:10px; align-items:flex-end; flex-wrap:wrap;">
+            <button id="loginBtn" class="primary" type="button">Enviar magic link</button>
+            <button id="syncBtn" type="button">Sync agora</button>
+            <button id="logoutBtn" type="button" class="danger">Sair</button>
+          </div>
+        </div>
+
+        <p id="authStatus" class="muted small" style="margin:10px 0 0;">
+          Não autenticado.
+        </p>
+      </div>
+    </section>
   </header>
 
   <main class="wrap grid">
@@ -197,6 +223,10 @@
 
   <!-- Chart.js via CDN -->
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+  <!-- Supabase JS (para login + sync) -->
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+
   <script src="app.js"></script>
 </body>
 </html>
